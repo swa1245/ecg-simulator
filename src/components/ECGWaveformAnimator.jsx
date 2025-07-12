@@ -337,6 +337,7 @@ const ECGWaveformAnimator = () => {
     const pointerHead = pointerHeadRef.current;
     const w = svg.width.baseVal.value;
     
+    // Calculate time delta and update pointer position
     const dt = lastTimestampRef.current ? (ts - lastTimestampRef.current) / 1000 : 0;
     lastTimestampRef.current = ts;
     pointerXRef.current += PIXELS_PER_SECOND * dt;
@@ -344,46 +345,53 @@ const ECGWaveformAnimator = () => {
     const pathPoints = pathPointsRef.current;
     let drawnPoints = drawnPointsRef.current;
     
+    // Initialize drawnPoints array if it's empty or null
+    if (!drawnPoints || drawnPoints.length === 0) {
+      drawnPoints = Array(pathPoints.length).fill(null);
+    }
+    
     // Find the current point index based on pointer position
     let idx = pathPoints.findIndex(pt => pt.x >= pointerXRef.current);
     if (idx < 0) idx = pathPoints.length - 1;
 
     if (firstSweepRef.current) {
       // First sweep mode - draw points up to the current position
-      drawnPoints = pathPoints.slice(0, idx + 1);
-      waveformPath.setAttribute("d", pointsToPath(drawnPoints));
+      // We'll copy points from pathPoints to drawnPoints up to the current index
+      for (let i = 0; i <= idx; i++) {
+        drawnPoints[i] = pathPoints[i];
+      }
+      
+      waveformPath.setAttribute("d", pointsToPath(drawnPoints.filter(Boolean)));
       
       // Transition to continuous mode when we reach the end of the screen
       if (pointerXRef.current > w) firstSweepRef.current = false;
     } else {
       // Continuous scrolling mode
       if (pointerXRef.current > w) {
-        // Reset pointer when it reaches the end but keep the animation state
+        // Reset pointer when it reaches the end
         pointerXRef.current = 0;
         
-        // Generate new points with current parameters
-        // This ensures any parameter changes take effect in the next cycle
+        // Generate new waveform points for the next cycle
         pathPointsRef.current = generateWaveformPoints();
       }
       
-      // Create a moving window effect by updating points around the pointer
-      const eraseWidth = Math.max(ERASE_WIDTH, w * 0.1); // Use at least 10% of screen width
-      const es = pointerXRef.current - eraseWidth / 2;
-      const ee = pointerXRef.current + eraseWidth / 2;
+      // In continuous mode, we only update points ahead of the pointer
+      // This creates the effect of new parameters only affecting future waveforms
       
-      // Find indices for the section to update
-      const si = Math.max(0, drawnPoints.findIndex(pt => pt && pt.x >= es));
-      const ei = drawnPoints.findIndex(pt => pt && pt.x > ee);
+      // Define the window of points to update (ahead of the pointer)
+      const updateStart = idx;
+      const updateEnd = Math.min(idx + Math.floor(w / 2), pathPoints.length);
       
-      // Update points in the visible window
-      for (let i = si; i < (ei < 0 ? drawnPoints.length : ei); i++) {
+      // Update only the points ahead of the pointer
+      for (let i = updateStart; i < updateEnd; i++) {
         drawnPoints[i] = pathPoints[i];
       }
       
-      // Update the SVG path
-      waveformPath.setAttribute("d", pointsToPath(drawnPoints));
+      // Update the SVG path with all valid points
+      waveformPath.setAttribute("d", pointsToPath(drawnPoints.filter(Boolean)));
     }
-
+    
+    // Update the pointer head position
     const cur = pathPoints[idx];
     if (cur) {
       pointerHead.setAttribute("cx", cur.x);
@@ -396,33 +404,37 @@ const ECGWaveformAnimator = () => {
 
   
   const applyNewParams = () => {
-    // Store the current pointer position
+    // Store the current pointer position and drawn points
     const currentPointerX = pointerXRef.current;
+    const currentDrawnPoints = [...drawnPointsRef.current];
     
-    // Cancel the current animation frame
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
+    // Find the index of the current pointer position in the points array
+    const currentPathPoints = pathPointsRef.current;
+    const currentIdx = currentPathPoints.findIndex(pt => pt.x >= currentPointerX);
     
     // Generate new waveform points based on updated parameters
-    pathPointsRef.current = generateWaveformPoints();
+    const newPathPoints = generateWaveformPoints();
     
-    // Instead of resetting everything, we'll maintain the current state
-    // but with the new waveform points
+    // Create a hybrid waveform: keep past points and use new parameters for future points
+    if (currentIdx >= 0 && !firstSweepRef.current) {
+      // For points before the current position, keep the old values
+      for (let i = 0; i < currentIdx; i++) {
+        if (i < currentDrawnPoints.length && currentDrawnPoints[i]) {
+          newPathPoints[i] = currentDrawnPoints[i];
+        }
+      }
+    }
+    
+    // Update the path points reference with our hybrid waveform
+    pathPointsRef.current = newPathPoints;
     
     // Keep the current pointer position
     pointerXRef.current = currentPointerX;
     
-    // Reset drawn points but maintain the animation state
-    drawnPointsRef.current = Array(pathPointsRef.current.length).fill(null);
-    
-    // Don't reset the first sweep flag - maintain the current animation mode
-    // firstSweepRef.current = true;
-    
-    // Maintain the timestamp to avoid jumps in animation
-    // lastTimestampRef.current = 0;
-    
     // Restart the animation loop
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
     animationRef.current = requestAnimationFrame(animationLoop);
   };
 
