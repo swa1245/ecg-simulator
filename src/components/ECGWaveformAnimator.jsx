@@ -344,25 +344,43 @@ const ECGWaveformAnimator = () => {
     const pathPoints = pathPointsRef.current;
     let drawnPoints = drawnPointsRef.current;
     
+    // Find the current point index based on pointer position
     let idx = pathPoints.findIndex(pt => pt.x >= pointerXRef.current);
     if (idx < 0) idx = pathPoints.length - 1;
 
     if (firstSweepRef.current) {
+      // First sweep mode - draw points up to the current position
       drawnPoints = pathPoints.slice(0, idx + 1);
       waveformPath.setAttribute("d", pointsToPath(drawnPoints));
+      
+      // Transition to continuous mode when we reach the end of the screen
       if (pointerXRef.current > w) firstSweepRef.current = false;
     } else {
+      // Continuous scrolling mode
       if (pointerXRef.current > w) {
+        // Reset pointer when it reaches the end but keep the animation state
         pointerXRef.current = 0;
+        
+        // Generate new points with current parameters
+        // This ensures any parameter changes take effect in the next cycle
         pathPointsRef.current = generateWaveformPoints();
       }
       
-      const es = pointerXRef.current - ERASE_WIDTH / 2, ee = pointerXRef.current + ERASE_WIDTH / 2;
-      const si = drawnPoints.findIndex(pt => pt && pt.x >= es);
+      // Create a moving window effect by updating points around the pointer
+      const eraseWidth = Math.max(ERASE_WIDTH, w * 0.1); // Use at least 10% of screen width
+      const es = pointerXRef.current - eraseWidth / 2;
+      const ee = pointerXRef.current + eraseWidth / 2;
+      
+      // Find indices for the section to update
+      const si = Math.max(0, drawnPoints.findIndex(pt => pt && pt.x >= es));
       const ei = drawnPoints.findIndex(pt => pt && pt.x > ee);
-      for (let i = (si < 0 ? 0 : si); i < (ei < 0 ? drawnPoints.length : ei); i++) {
+      
+      // Update points in the visible window
+      for (let i = si; i < (ei < 0 ? drawnPoints.length : ei); i++) {
         drawnPoints[i] = pathPoints[i];
       }
+      
+      // Update the SVG path
       waveformPath.setAttribute("d", pointsToPath(drawnPoints));
     }
 
@@ -378,17 +396,33 @@ const ECGWaveformAnimator = () => {
 
   
   const applyNewParams = () => {
+    // Store the current pointer position
+    const currentPointerX = pointerXRef.current;
+    
+    // Cancel the current animation frame
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
     
-   
+    // Generate new waveform points based on updated parameters
     pathPointsRef.current = generateWaveformPoints();
-    drawnPointsRef.current = Array(pathPointsRef.current.length).fill(null);
-    firstSweepRef.current = true;
-    pointerXRef.current = 0;
-    lastTimestampRef.current = 0;
     
+    // Instead of resetting everything, we'll maintain the current state
+    // but with the new waveform points
+    
+    // Keep the current pointer position
+    pointerXRef.current = currentPointerX;
+    
+    // Reset drawn points but maintain the animation state
+    drawnPointsRef.current = Array(pathPointsRef.current.length).fill(null);
+    
+    // Don't reset the first sweep flag - maintain the current animation mode
+    // firstSweepRef.current = true;
+    
+    // Maintain the timestamp to avoid jumps in animation
+    // lastTimestampRef.current = 0;
+    
+    // Restart the animation loop
     animationRef.current = requestAnimationFrame(animationLoop);
   };
 
@@ -641,15 +675,19 @@ const ECGWaveformAnimator = () => {
             Add Custom Beat
           </button>
 
-          <button 
-            onClick={applyNewParams}
-            className="w-full py-3 px-0 text-base font-semibold border-none rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white cursor-pointer mt-4 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md flex items-center justify-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-            Apply Changes
-          </button>
+          <div className="mt-6 relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-700/20 blur-md"></div>
+            <button 
+              onClick={applyNewParams}
+              className="relative w-full py-4 px-0 text-base font-semibold border-none rounded-md bg-gradient-to-r from-blue-600 to-blue-800 text-white cursor-pointer hover:from-blue-700 hover:to-blue-900 transition-all shadow-lg flex items-center justify-center gap-3"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <path d="M22 4L12 14.01l-3-3" />
+              </svg>
+              <span className="tracking-wide">Apply Changes to ECG</span>
+            </button>
+          </div>
         </div>
         
         
