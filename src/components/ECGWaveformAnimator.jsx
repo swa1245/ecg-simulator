@@ -429,6 +429,9 @@ const ECGWaveformAnimator = () => {
     const currentPointerX = pointerXRef.current;
     const currentDrawnPoints = [...drawnPointsRef.current];
     
+    // Save the current SVG path to maintain visual continuity
+    const currentSvgPath = waveformPathRef.current ? waveformPathRef.current.getAttribute("d") : null;
+    
     // Find the index of the current pointer position in the points array
     const currentPathPoints = pathPointsRef.current;
     const currentIdx = currentPathPoints.findIndex(pt => pt.x >= currentPointerX);
@@ -441,9 +444,10 @@ const ECGWaveformAnimator = () => {
     const newDrawnPoints = Array(newPathPoints.length).fill(null);
     
     if (currentIdx >= 0 && !firstSweepRef.current) {
-      // For points before the current position, keep the old values
+      // For points before the current position, keep the old values exactly as they were
       for (let i = 0; i < currentIdx; i++) {
         if (i < currentDrawnPoints.length && currentDrawnPoints[i]) {
+          // Preserve both the path points and drawn points to maintain visual consistency
           newPathPoints[i] = currentDrawnPoints[i];
           newDrawnPoints[i] = currentDrawnPoints[i];
         }
@@ -456,6 +460,11 @@ const ECGWaveformAnimator = () => {
     
     // Keep the current pointer position
     pointerXRef.current = currentPointerX;
+    
+    // Restore the SVG path to maintain visual continuity
+    if (currentSvgPath && waveformPathRef.current) {
+      waveformPathRef.current.setAttribute("d", currentSvgPath);
+    }
     
     // Restart the animation loop
     if (animationRef.current) {
