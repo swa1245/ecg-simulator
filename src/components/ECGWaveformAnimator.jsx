@@ -371,18 +371,39 @@ const ECGWaveformAnimator = () => {
         // Reset pointer when it reaches the end
         pointerXRef.current = 0;
         
+        // Save the current drawn points before generating new ones
+        const currentDrawnPoints = [...drawnPointsRef.current];
+        
         // Generate new waveform points for the next cycle
-        pathPointsRef.current = generateWaveformPoints();
+        const newPathPoints = generateWaveformPoints();
+        
+        // Create a new drawnPoints array that preserves the pattern of what was drawn
+        // This prevents the graph from resetting visually
+        const newDrawnPoints = Array(newPathPoints.length).fill(null);
+        
+        // Copy a portion of the old drawn points to maintain visual continuity
+        const pointsToCopy = Math.min(100, currentDrawnPoints.length);
+        for (let i = 0; i < pointsToCopy; i++) {
+          if (currentDrawnPoints[currentDrawnPoints.length - pointsToCopy + i]) {
+            newDrawnPoints[i] = newPathPoints[i];
+          }
+        }
+        
+        // Update references
+        pathPointsRef.current = newPathPoints;
+        drawnPointsRef.current = newDrawnPoints;
       }
       
-      // In continuous mode, we only update points ahead of the pointer
-      // This creates the effect of new parameters only affecting future waveforms
+      // In continuous mode, we only update points very close to the current pointer position
+      // This creates the effect of the waveform changing only as the pointer passes over it
       
-      // Define the window of points to update (ahead of the pointer)
+      // Define a very small window of points to update (just ahead of the pointer)
+      // We'll only update points that are within a small distance of the current pointer
+      const updateDistance = 10; // Only update points within 10 pixels of the pointer
       const updateStart = idx;
-      const updateEnd = Math.min(idx + Math.floor(w / 2), pathPoints.length);
+      const updateEnd = Math.min(idx + 1, pathPoints.length); // Only update the next point
       
-      // Update only the points ahead of the pointer
+      // Update only the points immediately ahead of the pointer
       for (let i = updateStart; i < updateEnd; i++) {
         drawnPoints[i] = pathPoints[i];
       }
@@ -415,18 +436,23 @@ const ECGWaveformAnimator = () => {
     // Generate new waveform points based on updated parameters
     const newPathPoints = generateWaveformPoints();
     
-    // Create a hybrid waveform: keep past points and use new parameters for future points
+    // Create a new drawnPoints array that preserves only the already drawn points
+    // and leaves future points as null (to be drawn only when the pointer reaches them)
+    const newDrawnPoints = Array(newPathPoints.length).fill(null);
+    
     if (currentIdx >= 0 && !firstSweepRef.current) {
       // For points before the current position, keep the old values
       for (let i = 0; i < currentIdx; i++) {
         if (i < currentDrawnPoints.length && currentDrawnPoints[i]) {
           newPathPoints[i] = currentDrawnPoints[i];
+          newDrawnPoints[i] = currentDrawnPoints[i];
         }
       }
     }
     
     // Update the path points reference with our hybrid waveform
     pathPointsRef.current = newPathPoints;
+    drawnPointsRef.current = newDrawnPoints;
     
     // Keep the current pointer position
     pointerXRef.current = currentPointerX;
